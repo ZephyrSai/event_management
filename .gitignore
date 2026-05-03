@@ -1,0 +1,12 @@
+# Intermediate / regeneratable data files
+roads_raw.json
+roads.geojson
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db

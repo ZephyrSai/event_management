@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boulevard World — Traffic Management POC</title>
+<link rel="stylesheet" href="lib/leaflet.css"/>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#0a0f1e;--panel:#111827;--panel2:#1a2236;--border:#1f2d45;
+    --accent:#3b82f6;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+    --red:#ef4444;--yellow:#f59e0b;--green:#22c55e;--blue:#3b82f6;--gray:#6b7280;
+    --shadow:0 4px 24px rgba(0,0,0,0.5);
+  }
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  #header{
+    background:linear-gradient(90deg,#0d1b2e,#162035);
+    border-bottom:1px solid var(--border);
+    padding:10px 20px;display:flex;align-items:center;gap:16px;
+    flex-shrink:0;z-index:1000;
+    box-shadow:0 2px 20px rgba(0,0,0,0.4);
+  }
+  #header .logo{
+    display:flex;align-items:center;gap:10px;
+    font-size:16px;font-weight:700;letter-spacing:0.5px;
+  }
+  #header .logo span.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;box-shadow:0 0 8px var(--accent)}
+  #header .subtitle{font-size:11px;color:var(--text3);font-weight:400;margin-top:1px}
+  #header .spacer{flex:1}
+  #header .stats{display:flex;gap:16px;align-items:center}
+  .stat-pill{
+    background:var(--panel2);border:1px solid var(--border);
+    border-radius:20px;padding:4px 12px;font-size:11px;color:var(--text2);
+    display:flex;align-items:center;gap:6px;
+  }
+  .stat-pill .val{color:var(--text);font-weight:600}
+  #layout{display:flex;flex:1;overflow:hidden}
+  #sidebar{
+    width:300px;min-width:300px;background:var(--panel);
+    border-right:1px solid var(--border);
+    display:flex;flex-direction:column;overflow:hidden;
+    box-shadow:2px 0 20px rgba(0,0,0,0.3);
+  }
+  #sidebar-header{
+    padding:14px 16px;border-bottom:1px solid var(--border);
+    background:var(--panel2);
+  }
+  #sidebar-header h2{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px}
+  #search-box{
+    width:100%;background:#0d1b2e;border:1px solid var(--border);
+    border-radius:8px;padding:8px 12px;color:var(--text);font-size:12px;
+    outline:none;transition:border-color 0.2s;
+  }
+  #search-box:focus{border-color:var(--accent)}
+  #search-box::placeholder{color:var(--text3)}
+  #traffic-controls{
+    padding:12px 16px;border-bottom:1px solid var(--border);background:var(--panel2);
+  }
+  #traffic-controls h3{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+  .status-btns{display:flex;gap:6px;flex-wrap:wrap}
+  .status-btn{
+    flex:1;padding:8px 6px;border-radius:8px;border:2px solid transparent;
+    cursor:pointer;font-size:11px;font-weight:600;text-align:center;
+    transition:all 0.2s;background:var(--panel);color:var(--text2);
+    min-width:60px;
+  }
+  .status-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+  .status-btn.active{transform:translateY(-1px)}
+  .status-btn.jam{border-color:var(--red);color:var(--red)}
+  .status-btn.jam.active{background:var(--red);color:#fff;box-shadow:0 0 12px rgba(239,68,68,0.4)}
+  .status-btn.slow{border-color:var(--yellow);color:var(--yellow)}
+  .status-btn.slow.active{background:var(--yellow);color:#000;box-shadow:0 0 12px rgba(245,158,11,0.4)}
+  .status-btn.moderate{border-color:#fb923c;color:#fb923c}
+  .status-btn.moderate.active{background:#fb923c;color:#fff;box-shadow:0 0 12px rgba(251,146,60,0.4)}
+  .status-btn.clear{border-color:var(--green);color:var(--green)}
+  .status-btn.clear.active{background:var(--green);color:#fff;box-shadow:0 0 12px rgba(34,197,94,0.4)}
+  .status-btn.normal{border-color:var(--gray);color:var(--text3)}
+  .status-btn.normal.active{background:var(--gray);color:#fff}
+  .restriction-btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .restriction-btn{
+    padding:8px 6px;border-radius:8px;border:1px solid var(--border);
+    cursor:pointer;font-size:10px;font-weight:700;text-align:center;
+    background:var(--panel);color:var(--text2);transition:all 0.2s;
+  }
+  .restriction-btn:hover{border-color:var(--accent);color:var(--text)}
+  .restriction-btn.block{border-color:rgba(239,68,68,0.45);color:#fca5a5}
+  .restriction-btn.open{border-color:rgba(34,197,94,0.45);color:#86efac}
+  .restriction-btn.oneway{border-color:rgba(56,189,248,0.45);color:#7dd3fc}
+  #filter-controls{
+    padding:10px 16px;border-bottom:1px solid var(--border);
+  }
+  #filter-controls h3{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+  .filter-chips{display:flex;gap:4px;flex-wrap:wrap}
+  .chip{
+    padding:3px 10px;border-radius:20px;font-size:10px;font-weight:500;
+    border:1px solid var(--border);cursor:pointer;transition:all 0.15s;
+    color:var(--text3);background:transparent;
+  }
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .chip.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  #road-list-container{flex:1;overflow-y:auto;padding:8px}
+  #road-list-container::-webkit-scrollbar{width:4px}
+  #road-list-container::-webkit-scrollbar-track{background:transparent}
+  #road-list-container::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .road-item{
+    padding:10px 12px;border-radius:8px;margin-bottom:4px;cursor:pointer;
+    border:1px solid transparent;transition:all 0.15s;
+    background:var(--panel2);display:flex;align-items:center;gap:10px;
+  }
+  .road-item:hover{border-color:var(--border);background:#1e2d42}
+  .road-item.selected{border-color:var(--accent);background:#162035;box-shadow:0 0 0 1px var(--accent)}
+  .road-item .status-dot{
+    width:10px;height:10px;border-radius:50%;flex-shrink:0;
+    box-shadow:0 0 6px currentColor;
+  }
+  .road-item .road-info{flex:1;min-width:0}
+  .road-item .road-name{font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .road-item .road-meta{font-size:10px;color:var(--text3);margin-top:2px}
+  .road-item .road-tag{
+    font-size:9px;padding:2px 6px;border-radius:4px;background:var(--panel);
+    color:var(--text3);border:1px solid var(--border);flex-shrink:0;text-transform:capitalize;
+  }
+  #map-container{flex:1;position:relative;overflow:hidden}
+  #map{width:100%;height:100%}
+  #info-panel{
+    position:absolute;bottom:20px;right:20px;z-index:800;
+    background:rgba(17,24,39,0.95);border:1px solid var(--border);
+    border-radius:12px;padding:14px 16px;min-width:220px;
+    backdrop-filter:blur(12px);box-shadow:var(--shadow);
+    transform:translateY(20px);opacity:0;transition:all 0.3s;pointer-events:none;
+  }
+  #info-panel.visible{transform:translateY(0);opacity:1;pointer-events:all}
+  #info-panel h4{font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)}
+  #info-panel .info-row{display:flex;justify-content:space-between;margin-bottom:4px;font-size:11px}
+  #info-panel .info-label{color:var(--text3)}
+  #info-panel .info-value{color:var(--text);font-weight:500}
+  #info-panel .close-btn{
+    position:absolute;top:8px;right:10px;background:none;border:none;
+    color:var(--text3);cursor:pointer;font-size:16px;padding:2px 6px;
+  }
+  #info-panel .close-btn:hover{color:var(--text)}
+  #legend{
+    position:absolute;top:20px;right:20px;z-index:800;
+    background:rgba(17,24,39,0.92);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;backdrop-filter:blur(10px);
+  }
+  #legend h4{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+  .legend-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11px;color:var(--text2)}
+  .legend-line{width:28px;height:4px;border-radius:2px}
+  #toast{
+    position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:900;
+    background:rgba(59,130,246,0.95);color:#fff;padding:8px 18px;border-radius:20px;
+    font-size:12px;font-weight:500;opacity:0;transition:opacity 0.3s;pointer-events:none;
+    box-shadow:0 4px 20px rgba(59,130,246,0.4);
+  }
+  #toast.show{opacity:1}
+  .leaflet-container{background:#0d1520}
+  #bottom-bar{
+    position:absolute;bottom:0;left:0;right:0;height:36px;
+    background:rgba(17,24,39,0.85);border-top:1px solid var(--border);
+    display:flex;align-items:center;padding:0 16px;gap:20px;
+    font-size:10px;color:var(--text3);z-index:700;backdrop-filter:blur(8px);
+  }
+  #bottom-bar span{display:flex;align-items:center;gap:4px}
+  #coords-display{margin-left:auto;font-family:monospace;font-size:10px;color:var(--text3)}
+  #multi-select-bar{
+    display:none;padding:8px 16px;border-bottom:1px solid var(--border);
+    background:linear-gradient(90deg,rgba(59,130,246,0.1),transparent);
+    font-size:11px;color:var(--accent);align-items:center;gap:8px;
+  }
+  #multi-select-bar.visible{display:flex}
+  #multi-select-bar .clear-sel{
+    margin-left:auto;background:none;border:1px solid var(--border);
+    color:var(--text3);cursor:pointer;border-radius:4px;padding:2px 8px;font-size:10px;
+  }
+  #multi-select-bar .clear-sel:hover{border-color:var(--red);color:var(--red)}
+  /* ── Loading overlay ── */
+  #loading-overlay{
+    position:fixed;inset:0;z-index:9999;background:#0a0f1e;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  }
+  #loading-overlay.hidden{display:none}
+  .spinner{
+    width:48px;height:48px;border:4px solid var(--border);
+    border-top-color:var(--accent);border-radius:50%;
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #loading-overlay p{color:var(--text2);font-size:13px}
+  #loading-overlay small{color:var(--text3);font-size:11px}
+  /* ── Demo panel ── */
+  #panel-demo{display:none;flex-direction:column;flex:1;overflow-y:auto}
+  #panel-demo::-webkit-scrollbar{width:4px}
+  #panel-demo::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .demo-section{padding:12px 16px;border-bottom:1px solid var(--border)}
+  .demo-section h3{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+  .sim-btn{
+    width:100%;padding:10px;border-radius:8px;border:none;cursor:pointer;
+    font-size:12px;font-weight:700;margin-bottom:6px;transition:all 0.2s;
+  }
+  .sim-btn:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,0.3)}
+  .sim-btn.primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
+  .sim-btn.secondary{background:var(--panel2);color:var(--text2);border:1px solid var(--border)}
+  .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .kpi-tile{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:9px 10px}
+  .kpi-tile span{display:block;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:4px}
+  .kpi-tile strong{font-size:17px;color:var(--text);font-weight:700}
+  .chart-row{display:grid;grid-template-columns:74px 1fr 42px;align-items:center;gap:8px;margin-bottom:8px}
+  .chart-label{font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart-track{height:7px;background:#0d1b2e;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .chart-bar{height:100%;border-radius:8px}
+  .chart-val{text-align:right;font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums}
+  .status-stack{display:flex;height:10px;border-radius:10px;overflow:hidden;background:#0d1b2e;border:1px solid var(--border);margin-bottom:8px}
+  .status-slice{height:100%;min-width:2px}
+  .alt-card{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px}
+  .alt-card.selected{border-color:#38bdf8;box-shadow:0 0 0 1px rgba(56,189,248,0.35)}
+  .alt-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .alt-name{font-size:12px;font-weight:700;color:var(--text)}
+  .alt-meta{font-size:10px;color:var(--text3);margin-top:2px}
+  .alt-head span{font-size:9px;font-weight:800;border:1px solid;border-radius:10px;padding:2px 7px;white-space:nowrap}
+  .alt-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:9px}
+  .alt-metrics div{background:#0d1b2e;border:1px solid var(--border);border-radius:7px;padding:7px;text-align:center}
+  .alt-metrics span{display:block;font-size:9px;color:var(--text3);margin-bottom:3px}
+  .alt-metrics strong{font-size:12px;color:var(--text)}
+  .smart-note{font-size:10px;color:#93c5fd;line-height:1.4;margin-top:8px}
+  .smart-note.danger{color:#fca5a5}
+  .alt-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:9px}
+  .alt-actions button{border:1px solid rgba(56,189,248,0.35);background:rgba(56,189,248,0.12);color:#7dd3fc;border-radius:7px;padding:7px;font-size:10px;font-weight:700;cursor:pointer}
+  .alt-actions button:hover{background:rgba(56,189,248,0.2)}
+  /* ── Chat panel ── */
+  #chat-panel{
+    position:absolute;bottom:46px;right:20px;z-index:850;
+    width:320px;background:rgba(15,23,42,0.97);border:1px solid var(--border);
+    border-radius:14px;display:flex;flex-direction:column;
+    box-shadow:0 8px 40px rgba(0,0,0,0.6);backdrop-filter:blur(16px);
+    transform:translateY(20px);opacity:0;pointer-events:none;transition:all 0.3s;
+    max-height:460px;
+  }
+  #chat-panel.visible{transform:translateY(0);opacity:1;pointer-events:all}
+  #chat-header{
+    display:flex;align-items:center;gap:10px;padding:12px 14px;
+    border-bottom:1px solid var(--border);flex-shrink:0;
+    background:linear-gradient(90deg,rgba(37,99,235,0.2),transparent);
+    border-radius:14px 14px 0 0;
+  }
+  #chat-header .avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#1d4ed8);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+  #chat-cp-name{font-size:12px;font-weight:600;color:var(--text)}
+  #chat-cp-officer{font-size:10px;color:#60a5fa;margin-top:1px}
+  #chat-close{margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:0 4px;line-height:1}
+  #chat-close:hover{color:var(--text)}
+  #chat-messages{flex:1;overflow-y:auto;padding:12px 14px;min-height:140px;max-height:220px}
+  #chat-messages::-webkit-scrollbar{width:3px}
+  #chat-messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  #quick-btns{display:flex;gap:4px;flex-wrap:wrap;padding:8px 14px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);flex-shrink:0}
+  .quick-btn{font-size:9px;padding:3px 8px;border-radius:10px;border:1px solid var(--border);background:var(--panel2);color:var(--text3);cursor:pointer;transition:all 0.15s;white-space:nowrap}
+  .quick-btn:hover{border-color:var(--accent);color:var(--accent)}
+  #chat-input-row{display:flex;gap:8px;padding:10px 14px;flex-shrink:0}
+  #chat-input{
+    flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:20px;
+    padding:8px 14px;color:var(--text);font-size:11px;outline:none;transition:border-color 0.2s;
+  }
+  #chat-input:focus{border-color:var(--accent)}
+  #chat-input::placeholder{color:var(--text3)}
+  #chat-send{background:#2563eb;border:none;color:#fff;border-radius:20px;padding:8px 14px;cursor:pointer;font-size:11px;font-weight:600;transition:background 0.2s}
+  #chat-send:hover{background:#1d4ed8}
+  /* ── Tabs ── */
+  #sidebar-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--panel2);flex-shrink:0}
+  .tab-btn{
+    flex:1;padding:10px 8px;font-size:12px;font-weight:600;text-align:center;
+    cursor:pointer;border:none;background:none;color:var(--text3);
+    border-bottom:2px solid transparent;transition:all 0.2s;
+  }
+  .tab-btn:hover{color:var(--text)}
+  .tab-btn.tab-active{color:var(--accent);border-bottom-color:var(--accent)}
+  #panel-traffic{display:flex;flex-direction:column;flex:1;overflow:hidden}
+  #panel-route{display:none;flex-direction:column;flex:1;overflow-y:auto;padding:12px 16px;gap:12px}
+  #panel-route::-webkit-scrollbar{width:4px}
+  #panel-route::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .route-section{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px}
+  .route-section h3{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+  .route-btn{
+    width:100%;padding:9px 12px;border-radius:8px;border:none;cursor:pointer;
+    font-size:12px;font-weight:600;transition:all 0.2s;
+  }
+  .route-btn.primary{background:var(--accent);color:#fff}
+  .route-btn.primary:hover{background:#2563eb;transform:translateY(-1px)}
+  .route-btn.danger{background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3)}
+  .route-btn.danger:hover{background:rgba(239,68,68,0.25)}
+  .route-btn.gmaps{background:linear-gradient(90deg,#1a73e8,#0f9d58);color:#fff;margin-top:6px}
+  .route-btn.gmaps:hover{opacity:0.9;transform:translateY(-1px)}
+  .hint-text{font-size:11px;color:var(--text3);line-height:1.5}
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <p>Loading Boulevard World road network…</p>
+  <small id="loading-detail">Parsing 6,824 road segments</small>
+</div>
+
+<div id="header">
+  <div class="logo">
+    <span class="dot"></span>
+    <div>
+      <div>BOULEVARD WORLD — Traffic Operations</div>
+      <div class="subtitle">Municipality Planning POC · Riyadh, Saudi Arabia</div>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <div class="stats">
+    <div class="stat-pill">Roads <span class="val" id="stat-total">—</span></div>
+    <div class="stat-pill" style="color:#ef4444">🔴 Jammed <span class="val" id="stat-jam">0</span></div>
+    <div class="stat-pill" style="color:#f59e0b">🟡 Slow <span class="val" id="stat-slow">0</span></div>
+    <div class="stat-pill" style="color:#22c55e">🟢 Clear <span class="val" id="stat-clear">0</span></div>
+    <div class="stat-pill" style="color:#fca5a5">⛔ Blocked <span class="val" id="stat-blocked">0</span></div>
+  </div>
+</div>
+
+<div id="layout">
+  <div id="sidebar">
+    <!-- Tabs -->
+    <div id="sidebar-tabs">
+      <button class="tab-btn tab-active" id="tab-traffic" onclick="toggleRouteMode(false)">🚦 Traffic</button>
+      <button class="tab-btn" id="tab-route" onclick="toggleRouteMode(true)">🗺️ Route</button>
+      <button class="tab-btn" id="tab-demo" onclick="toggleDemoMode(true)">🎬 Demo</button>
+    </div>
+
+    <!-- Traffic Panel -->
+    <div id="panel-traffic">
+      <div id="sidebar-header">
+        <h2>Road Segments</h2>
+        <input id="search-box" type="text" placeholder="Search roads…" oninput="filterRoads()">
+      </div>
+
+      <div id="traffic-controls">
+        <h3>Set Traffic Status</h3>
+        <div class="status-btns">
+          <button class="status-btn jam" onclick="selectStatus('jam')">🔴 Jammed</button>
+          <button class="status-btn slow" onclick="selectStatus('slow')">🟡 Slow</button>
+          <button class="status-btn moderate" onclick="selectStatus('moderate')">🟠 Moderate</button>
+          <button class="status-btn clear" onclick="selectStatus('clear')">🟢 Clear</button>
+          <button class="status-btn normal active" onclick="selectStatus('normal')">⚪ Normal</button>
+        </div>
+        <h3 style="margin-top:12px">Road Restrictions</h3>
+        <div class="restriction-btns">
+          <button class="restriction-btn block" onclick="applyRestrictionToSelected('blocked', true)">⛔ Block</button>
+          <button class="restriction-btn open" onclick="applyRestrictionToSelected('blocked', false)">✓ Open</button>
+          <button class="restriction-btn oneway" onclick="applyRestrictionToSelected('oneway', 'yes')">↑ One-way</button>
+          <button class="restriction-btn" onclick="applyRestrictionToSelected('oneway', 'no')">↕ Two-way</button>
+        </div>
+      </div>
+
+      <div id="multi-select-bar">
+        <span id="sel-count">0 selected</span>
+        <button onclick="applyToSelected()" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:2px 10px;cursor:pointer;font-size:10px">Apply Status</button>
+        <button class="clear-sel" onclick="clearSelection()">✕ Clear</button>
+      </div>
+
+      <div id="filter-controls">
+        <h3>Filter by Type</h3>
+        <div class="filter-chips" id="type-chips"></div>
+      </div>
+
+      <div id="road-list-container">
+        <div id="road-list"></div>
+      </div>
+    </div>
+
+    <!-- Route Planner Panel -->
+    <div id="panel-route">
+      <div class="route-section">
+        <h3>How to create a route</h3>
+        <p class="hint-text">1. Click on the map to place a <span style="color:#22c55e">Start</span> point<br>2. Click again to place an <span style="color:#ef4444">End</span> point<br>3. Click more to add <span style="color:#3b82f6">Via</span> waypoints<br>4. Drag any pin to adjust<br><br>Route avoids jammed roads automatically.</p>
+      </div>
+
+      <div class="route-section">
+        <h3>Waypoints</h3>
+        <div id="waypoint-list"><div style="color:var(--text3);font-size:11px;padding:4px 0">No waypoints yet</div></div>
+        <button class="route-btn danger" onclick="clearRoute()" style="margin-top:10px">✕ Clear Route</button>
+      </div>
+
+      <div class="route-section">
+        <h3>Route Summary</h3>
+        <div id="route-result"><div style="color:var(--text3);font-size:11px">Place start and end points to calculate a route.</div></div>
+        <button id="route-gmaps-btn" class="route-btn gmaps" onclick="exportToGoogleMaps()" style="display:none">
+          <span style="font-size:14px">↗</span> Open in Google Maps
+        </button>
+      </div>
+    </div>
+
+    <!-- Demo Panel -->
+    <div id="panel-demo">
+      <div class="demo-section">
+        <h3>Smart Operations</h3>
+        <div id="demo-kpis"></div>
+        <div style="margin-top:12px">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:7px">Delay by corridor</div>
+          <div id="demo-delay-chart"></div>
+        </div>
+        <div style="margin-top:10px">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:7px">Traffic mix</div>
+          <div class="status-stack" id="demo-status-chart"></div>
+        </div>
+      </div>
+      <div class="demo-section">
+        <h3>Simulated Routes</h3>
+        <div id="demo-route-list"></div>
+      </div>
+      <div class="demo-section">
+        <h3>Alternate Routes</h3>
+        <div id="demo-alt-list"></div>
+      </div>
+      <div class="demo-section">
+        <h3>Police Checkpoints</h3>
+        <div id="demo-cp-list"></div>
+      </div>
+      <div class="demo-section" style="border-bottom:none">
+        <h3>Simulation Controls</h3>
+        <button class="sim-btn primary" onclick="simulateTraffic()">🎲 Randomise Traffic Situation</button>
+        <button class="sim-btn secondary" onclick="selectedAltRouteId=null;drawDemoLayers();showToast('Alternates regenerated from current traffic')">↯ Generate Alternate Routes</button>
+        <button class="sim-btn secondary" onclick="resetDemo()">↺ Reset to Default Scenario</button>
+        <p style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">Zoom out below level 14 to see heatmap. Click any 👮 checkpoint on the map to open comms.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="map-container">
+    <div id="map"></div>
+
+    <div id="legend">
+      <h4>Traffic Legend</h4>
+      <div class="legend-row"><div class="legend-line" style="background:#ef4444"></div> Jammed</div>
+      <div class="legend-row"><div class="legend-line" style="background:#f59e0b"></div> Slow</div>
+      <div class="legend-row"><div class="legend-line" style="background:#fb923c"></div> Moderate</div>
+      <div class="legend-row"><div class="legend-line" style="background:#22c55e"></div> Clear</div>
+      <div class="legend-row"><div class="legend-line" style="background:#475569"></div> Normal</div>
+    </div>
+
+    <div id="info-panel">
+      <button class="close-btn" onclick="closeInfo()">✕</button>
+      <h4 id="info-name">—</h4>
+      <div class="info-row"><span class="info-label">Type</span><span class="info-value" id="info-type">—</span></div>
+      <div class="info-row"><span class="info-label">Status</span><span class="info-value" id="info-status">—</span></div>
+      <div class="info-row"><span class="info-label">Lanes</span><span class="info-value" id="info-lanes">—</span></div>
+      <div class="info-row"><span class="info-label">Max Speed</span><span class="info-value" id="info-speed">—</span></div>
+      <div class="info-row"><span class="info-label">Restriction</span><span class="info-value" id="info-restriction">—</span></div>
+      <div class="info-row"><span class="info-label">One-way</span><span class="info-value" id="info-oneway">—</span></div>
+      <div class="info-row"><span class="info-label">Ref</span><span class="info-value" id="info-ref">—</span></div>
+    </div>
+
+    <div id="toast">Road status updated</div>
+
+    <!-- Chat Panel -->
+    <div id="chat-panel">
+      <div id="chat-header">
+        <div class="avatar">👮</div>
+        <div>
+          <div id="chat-cp-name">Checkpoint</div>
+          <div id="chat-cp-officer">Officer</div>
+        </div>
+        <button id="chat-close" onclick="closeChatPanel()">✕</button>
+      </div>
+      <div id="chat-messages"></div>
+      <div id="quick-btns"></div>
+      <div id="chat-input-row">
+        <input id="chat-input" type="text" placeholder="Send instruction…"
+          onkeydown="if(event.key==='Enter')doSendChat()">
+        <button id="chat-send" onclick="doSendChat()">Send</button>
+      </div>
+    </div>
+
+    <div id="bottom-bar">
+      <span>📍 Center: 24.776217, 46.602357</span>
+      <span>🗺️ OpenStreetMap © Contributors</span>
+      <span id="coords-display">Hover map for coordinates</span>
+    </div>
+  </div>
+</div>
+
+<script src="lib/leaflet.js"></script>
+<script src="lib/leaflet-heat.js"></script>
+<script src="roads_data.js"></script>
+<script src="router.js"></script>
+<script src="demo.js"></script>
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+const STATUS_COLORS = {
+  jam:      '#ef4444',
+  slow:     '#f59e0b',
+  moderate: '#fb923c',
+  clear:    '#22c55e',
+  normal:   '#475569'
+};
+const STATUS_WEIGHT = {
+  jam: 6, slow: 5, moderate: 5, clear: 4, normal: 3
+};
+const STATUS_LABELS = {
+  jam:'Jammed', slow:'Slow', moderate:'Moderate', clear:'Clear', normal:'Normal'
+};
+
+let currentStatus = 'normal';
+let selectedIds = new Set();
+let featureLayerMap = {}; // id -> leaflet layer
+let roadData = {};        // id -> properties
+let activeFilters = new Set(['all']);
+let allTypes = new Set();
+
+// ─── Map Init ─────────────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [24.776217, 46.602357],
+  zoom: 15,
+  zoomControl: true,
+  attributionControl: true
+});
+
+// Dark tile layer (CartoDB dark matter - cached gracefully)
+const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO',
+  subdomains: 'abcd',
+  maxZoom: 20,
+  minZoom: 10
+}).addTo(map);
+
+// Fallback: if tiles don't load (truly offline), map still shows roads on dark bg
+tileLayer.on('tileerror', function() {});
+
+// Track mouse coordinates
+map.on('mousemove', function(e) {
+  document.getElementById('coords-display').textContent =
+    `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
+});
+
+// ─── Load GeoJSON ─────────────────────────────────────────────────────────────
+function styleRoad(feature) {
+  if (feature.properties.blocked) {
+    return {
+      color: '#111827',
+      weight: 8,
+      opacity: 0.95,
+      dashArray: '2, 8',
+      lineCap: 'round',
+      lineJoin: 'round'
+    };
+  }
+  const status = feature.properties.traffic_status || 'normal';
+  return {
+    color: STATUS_COLORS[status],
+    weight: STATUS_WEIGHT[status],
+    opacity: 0.85,
+    lineCap: 'round',
+    lineJoin: 'round'
+  };
+}
+
+const geoLayer = L.geoJSON(ROADS_GEOJSON, {
+  style: styleRoad,
+  onEachFeature: function(feature, layer) {
+    const id = feature.properties.id;
+    featureLayerMap[id] = layer;
+    roadData[id] = feature.properties;
+    allTypes.add(feature.properties.highway);
+
+    layer.on('click', function(e) {
+      L.DomEvent.stopPropagation(e);
+      handleRoadClick(id);
+    });
+    layer.on('mouseover', function() {
+      if (!selectedIds.has(id)) {
+        const baseWeight = roadData[id].blocked ? 8 : STATUS_WEIGHT[roadData[id].traffic_status || 'normal'];
+        layer.setStyle({ weight: baseWeight + 2, opacity: 1 });
+      }
+    });
+    layer.on('mouseout', function() {
+      if (!selectedIds.has(id)) {
+        layer.setStyle(styleRoad(feature));
+      }
+    });
+  }
+}).addTo(map);
+
+// Click on map background — deselect (traffic mode) or place waypoint (route mode)
+map.on('click', function(e) {
+  if (routeMode) return; // handled by router.js
+  clearSelection(); closeInfo();
+});
+
+// ─── Road Click ───────────────────────────────────────────────────────────────
+function handleRoadClick(id) {
+  const layer = featureLayerMap[id];
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    layer.setStyle(styleRoad({ properties: roadData[id] }));
+  } else {
+    selectedIds.add(id);
+    layer.setStyle({ color: '#fff', weight: 7, opacity: 1, dashArray: null });
+  }
+  updateSelectionBar();
+  showInfo(id);
+  highlightListItem(id);
+}
+
+function applyToSelected() {
+  if (selectedIds.size === 0) { showToast('No roads selected'); return; }
+  selectedIds.forEach(id => {
+    roadData[id].traffic_status = currentStatus;
+    featureLayerMap[id].setStyle(styleRoad({ properties: roadData[id] }));
+  });
+  rebuildRoutingGraph();
+  updateStats();
+  renderRoadList();
+  showToast(`Applied "${STATUS_LABELS[currentStatus]}" to ${selectedIds.size} road(s)`);
+  clearSelection();
+}
+
+function rebuildRoutingGraph() {
+  if (typeof buildGraph === 'function') buildGraph();
+  if (typeof demoGraph !== 'undefined') demoGraph = null;
+  if (typeof selectedAltRouteId !== 'undefined') selectedAltRouteId = null;
+  if (typeof routePolyline !== 'undefined' && routePolyline) {
+    routePolyline.remove();
+    routePolyline = null;
+  }
+  if (typeof routeHighlights !== 'undefined') {
+    routeHighlights.forEach(l => l.remove());
+    routeHighlights = [];
+  }
+}
+
+function applyRestrictionToSelected(kind, value) {
+  if (selectedIds.size === 0) { showToast('No roads selected'); return; }
+  selectedIds.forEach(id => {
+    roadData[id][kind] = value;
+    featureLayerMap[id].setStyle(styleRoad({ properties: roadData[id] }));
+  });
+  rebuildRoutingGraph();
+  updateStats();
+  renderRoadList();
+  const label = kind === 'blocked'
+    ? (value ? 'blocked' : 'opened')
+    : (value === 'yes' ? 'set one-way' : 'set two-way');
+  showToast(`${selectedIds.size} road(s) ${label}`);
+  clearSelection();
+  if (demoActive) drawDemoLayers();
+}
+
+// ─── Selection ────────────────────────────────────────────────────────────────
+function updateSelectionBar() {
+  const bar = document.getElementById('multi-select-bar');
+  if (selectedIds.size > 0) {
+    bar.classList.add('visible');
+    document.getElementById('sel-count').textContent = `${selectedIds.size} selected`;
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+function clearSelection() {
+  selectedIds.forEach(id => {
+    featureLayerMap[id].setStyle(styleRoad({ properties: roadData[id] }));
+  });
+  selectedIds.clear();
+  updateSelectionBar();
+  document.querySelectorAll('.road-item.selected').forEach(el => el.classList.remove('selected'));
+}
+
+// ─── Status Picker ────────────────────────────────────────────────────────────
+function selectStatus(status) {
+  currentStatus = status;
+  document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.status-btn.${status}`).classList.add('active');
+  // If roads selected, apply immediately
+  if (selectedIds.size > 0) applyToSelected();
+}
+
+// ─── Info Panel ───────────────────────────────────────────────────────────────
+function showInfo(id) {
+  const p = roadData[id];
+  document.getElementById('info-name').textContent = p.name || 'Unnamed Road';
+  document.getElementById('info-type').textContent = p.highway || '—';
+  const status = p.traffic_status || 'normal';
+  const statusEl = document.getElementById('info-status');
+  statusEl.textContent = STATUS_LABELS[status];
+  statusEl.style.color = STATUS_COLORS[status];
+  document.getElementById('info-lanes').textContent = p.lanes || '—';
+  document.getElementById('info-speed').textContent = p.maxspeed ? p.maxspeed + ' km/h' : '—';
+  const restrictionEl = document.getElementById('info-restriction');
+  restrictionEl.textContent = p.blocked ? 'Blocked' : 'Open';
+  restrictionEl.style.color = p.blocked ? '#fca5a5' : '#86efac';
+  document.getElementById('info-oneway').textContent = p.oneway === 'yes' ? 'Yes ↑' : 'No';
+  document.getElementById('info-ref').textContent = p.ref || '—';
+  document.getElementById('info-panel').classList.add('visible');
+}
+
+function closeInfo() {
+  document.getElementById('info-panel').classList.remove('visible');
+}
+
+// ─── Road List ────────────────────────────────────────────────────────────────
+function renderRoadList() {
+  const query = document.getElementById('search-box').value.toLowerCase();
+  const list = document.getElementById('road-list');
+  list.innerHTML = '';
+  let count = 0;
+  const features = ROADS_GEOJSON.features;
+  for (const feat of features) {
+    const p = feat.properties;
+    if (!activeFilters.has('all') && !activeFilters.has(p.highway)) continue;
+    if (query && !p.name.toLowerCase().includes(query) && !p.highway.includes(query)) continue;
+    const status = p.traffic_status || 'normal';
+    const dotColor = p.blocked ? '#111827' : STATUS_COLORS[status];
+    const meta = `${p.blocked ? 'Blocked' : STATUS_LABELS[status]} · ${p.oneway === 'yes' ? 'one-way' : 'two-way'} · ${p.highway}`;
+    const div = document.createElement('div');
+    div.className = 'road-item' + (selectedIds.has(p.id) ? ' selected' : '');
+    div.dataset.id = p.id;
+    div.innerHTML = `
+      <div class="status-dot" style="background:${dotColor};color:${dotColor};border:${p.blocked ? '1px solid #fca5a5' : 'none'}"></div>
+      <div class="road-info">
+        <div class="road-name">${p.name || 'Unnamed Road'}</div>
+        <div class="road-meta">${meta}</div>
+      </div>
+      <div class="road-tag">${p.blocked ? 'blocked' : p.highway}</div>
+    `;
+    div.onclick = () => {
+      const layer = featureLayerMap[p.id];
+      if (layer) {
+        const bounds = layer.getBounds();
+        map.flyToBounds(bounds, { padding: [80, 80], duration: 0.6, maxZoom: 17 });
+        handleRoadClick(p.id);
+      }
+    };
+    list.appendChild(div);
+    count++;
+  }
+}
+
+function highlightListItem(id) {
+  document.querySelectorAll('.road-item').forEach(el => {
+    el.classList.toggle('selected', Number(el.dataset.id) === Number(id));
+  });
+}
+
+function filterRoads() { renderRoadList(); }
+
+// ─── Type Filter Chips ────────────────────────────────────────────────────────
+function buildTypeChips() {
+  const container = document.getElementById('type-chips');
+  container.innerHTML = '';
+  const allBtn = document.createElement('div');
+  allBtn.className = 'chip active';
+  allBtn.textContent = 'All';
+  allBtn.onclick = () => {
+    activeFilters.clear();
+    activeFilters.add('all');
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    allBtn.classList.add('active');
+    renderRoadList();
+  };
+  container.appendChild(allBtn);
+  [...allTypes].sort().forEach(type => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.textContent = type;
+    chip.onclick = () => {
+      activeFilters.delete('all');
+      document.querySelector('.chip:first-child').classList.remove('active');
+      if (activeFilters.has(type)) {
+        activeFilters.delete(type);
+        chip.classList.remove('active');
+        if (activeFilters.size === 0) {
+          activeFilters.add('all');
+          document.querySelector('.chip:first-child').classList.add('active');
+        }
+      } else {
+        activeFilters.add(type);
+        chip.classList.add('active');
+      }
+      renderRoadList();
+    };
+    container.appendChild(chip);
+  });
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+function updateStats() {
+  const features = ROADS_GEOJSON.features;
+  let jam = 0, slow = 0, clear = 0, blocked = 0;
+  features.forEach(f => {
+    if (f.properties.blocked) blocked++;
+    const s = f.properties.traffic_status;
+    if (s === 'jam') jam++;
+    else if (s === 'slow' || s === 'moderate') slow++;
+    else if (s === 'clear') clear++;
+  });
+  document.getElementById('stat-total').textContent = features.length;
+  document.getElementById('stat-jam').textContent = jam;
+  document.getElementById('stat-slow').textContent = slow;
+  document.getElementById('stat-clear').textContent = clear;
+  document.getElementById('stat-blocked').textContent = blocked;
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+// Defer heavy work so the loading overlay renders first
+requestAnimationFrame(() => setTimeout(() => {
+  document.getElementById('loading-detail').textContent = 'Rendering road layers…';
+  buildTypeChips();
+  renderRoadList();
+  updateStats();
+  document.getElementById('stat-total').textContent = ROADS_GEOJSON.features.length;
+  map.fitBounds(geoLayer.getBounds(), { padding: [40, 40] });
+
+  document.getElementById('loading-detail').textContent = 'Building routing graph…';
+  setTimeout(() => {
+    initRouter();
+    initDemo();
+    document.getElementById('loading-overlay').classList.add('hidden');
+  }, 50);
+}, 30));
+</script>
+</body>
+</html>
