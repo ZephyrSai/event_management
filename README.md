@@ -1,8 +1,8 @@
 # Boulevard World — Smart Traffic Operations POC
 
-https://zephyrsai.github.io/event_management/
+zephyrsai.github.io/event_management
 
-An interactive, offline-capable traffic operations platform for **Boulevard World, Riyadh, Saudi Arabia** (`24.776217, 46.602357`). It lets operators inspect real OpenStreetMap road geometry, mark live traffic conditions, apply road restrictions, calculate traffic-aware routes, and run a smart demo with simulated incidents, KPI charts, alternate-route generation, and Google Maps export.
+An interactive, offline-capable traffic operations platform for **Boulevard World, Riyadh, Saudi Arabia** (`24.776217, 46.602357`). It lets operators inspect real OpenStreetMap road geometry, mark live traffic conditions, apply road restrictions, calculate traffic-aware routes, and run a smart demo with a user-defined event center, simulated incidents, demand forecasting, KPI charts, alternate-route generation, and Google Maps export.
 
 The current bundled dataset contains **6,824 OSM road segments**, about **28,505 graph nodes**, and about **51,740 directed routing edges**.
 
@@ -39,11 +39,15 @@ The current bundled dataset contains **6,824 OSM road segments**, about **28,505
 
 ### Smart Demo Mode
 
+- Event center can be changed by clicking a location on the map while Demo mode is active.
+- The app validates that the selected center is close enough to the mapped road network before regenerating the scenario.
 - Three simulated traffic corridors into Boulevard World:
   - NW Corridor
   - East Corridor
   - South Corridor
-- Demo corridor paths are calculated over actual OSM roads, not straight-line overlays.
+- Demo corridor paths are generated around the selected event center and calculated over actual OSM roads, not straight-line overlays.
+- Demand forecast estimates expected visitors, expected vehicles, peak arrivals per hour, and recommended control staffing.
+- Forecast inputs include historical average visitors, vehicle share, average vehicle occupancy, peak-arrival share, and access-road density around the selected center.
 - Smart operations panel includes:
   - Active corridor count.
   - Average delay.
@@ -135,6 +139,8 @@ Then open [http://127.0.0.1:8765](http://127.0.0.1:8765).
 | Action | How |
 |---|---|
 | View smart KPIs | Open the Demo tab |
+| Set event center | Click a location on the map while Demo mode is active |
+| Reset event center | Click Reset in the Event Center panel |
 | Randomise incident status | Click Randomise Traffic Situation |
 | Regenerate alternates | Click Generate Alternate Routes |
 | Inspect an alternate | Click View alt on a corridor card |
@@ -175,7 +181,9 @@ Then open [http://127.0.0.1:8765](http://127.0.0.1:8765).
 | Living Street | 15 km/h |
 | Service | 20 km/h |
 
-### Demo Alternate Routes
+### Demo Event Center and Alternate Routes
+
+The demo starts with Boulevard World as the default event center. In Demo mode, clicking a new map location moves the center and rebuilds corridors, incidents, checkpoints, demand forecasts, and alternate routes around that point. If the clicked location is too far from the mapped road network, the app rejects it and keeps the previous center.
 
 The demo first calculates each simulated corridor over real roads. Then the alternate-route generator penalizes the current corridor’s road features so the router prefers a different road path where possible. Blocked roads are excluded. Each alternate can be exported to Google Maps with sampled waypoints from the calculated path.
 
