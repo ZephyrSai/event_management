@@ -4,7 +4,42 @@
 //  Incidents, police checkpoints, heatmap, live chat comms
 // ═══════════════════════════════════════════════════════════════
 
-const CENTER_PT = [24.776217, 46.602357];
+const DEFAULT_CENTER_PT = [24.776217, 46.602357];
+let eventCenter = [...DEFAULT_CENTER_PT];
+let eventCenterRoadDistanceM = 0;
+
+const HISTORICAL_EVENT_BASELINE = {
+  avgVisitors: 42000,
+  vehicleShare: 0.58,
+  avgVehicleOccupancy: 2.7,
+  peakArrivalShare: 0.32,
+  checkpointCapacity: 1150
+};
+
+const DEMO_ROUTE_TEMPLATES = [
+  { id:'nw',    name:'NW Corridor',    label:'Northwest arrivals -> Event Center', bearing:315, status:'jam' },
+  { id:'east',  name:'East Corridor',  label:'Eastern arrivals -> Event Center',   bearing:90,  status:'slow' },
+  { id:'south', name:'South Corridor', label:'Southern arrivals -> Event Center',  bearing:180, status:'moderate' }
+];
+
+const INCIDENT_TEMPLATES = [
+  { id:'i1', route:'nw',    bearing:315, dist:3600, severity:'jam',      desc:'Multi-vehicle collision — 3 lanes blocked' },
+  { id:'i2', route:'nw',    bearing:315, dist:2300, severity:'slow',     desc:'Signal failure — manual control active' },
+  { id:'i3', route:'nw',    bearing:315, dist:4600, severity:'moderate', desc:'Congestion — slow-moving vehicles' },
+  { id:'i4', route:'east',  bearing:90,  dist:3200, severity:'slow',     desc:'Heavy vehicle restriction — lane closure' },
+  { id:'i5', route:'east',  bearing:90,  dist:1900, severity:'moderate', desc:'Lane merge — 30% capacity reduction' },
+  { id:'i6', route:'south', bearing:180, dist:3100, severity:'jam',      desc:'Road works contraflow — 1 lane only' },
+  { id:'i7', route:'south', bearing:180, dist:2100, severity:'slow',     desc:'School zone — reduced speed limit active' },
+];
+
+const CHECKPOINT_TEMPLATES = [
+  { id:'cp-a', bearing:315, dist:3600, name:'Junction Alpha — NW Gate',    officer:'Cpl. Al-Harbi',    unit:'Unit 7',  zone:'NW' },
+  { id:'cp-b', bearing:315, dist:2100, name:'Junction Bravo — NW Mid',     officer:'Sgt. Al-Qahtani', unit:'Unit 12', zone:'NW' },
+  { id:'cp-c', bearing:90,  dist:3200, name:'Junction Charlie — East Gate', officer:'Cpl. Al-Dosari',  unit:'Unit 3',  zone:'E'  },
+  { id:'cp-d', bearing:180, dist:3100, name:'Junction Delta — South Gate',  officer:'Sgt. Al-Shehri',  unit:'Unit 9',  zone:'S'  },
+  { id:'cp-e', bearing:235, dist:1100, name:'Junction Echo — SW Entry',     officer:'Cpl. Al-Ghamdi',  unit:'Unit 5',  zone:'SW' },
+  { id:'cp-f', bearing:45,  dist:1300, name:'Junction Foxtrot — NE Entry',  officer:'Sgt. Al-Zahrani', unit:'Unit 14', zone:'NE' },
+];
 
 // ── Pre-defined Routes ──────────────────────────────────────────
 const DEMO_ROUTES = [
@@ -12,7 +47,7 @@ const DEMO_ROUTES = [
     id: 'nw', name: 'NW Corridor', label: 'King Fahd Rd → Boulevard World',
     anchors: [
       [24.809, 46.563],[24.801, 46.571],[24.793, 46.579],
-      [24.786, 46.588],[24.781, 46.595], CENTER_PT
+      [24.786, 46.588],[24.781, 46.595], eventCenter
     ],
     status: 'jam'
   },
@@ -20,7 +55,7 @@ const DEMO_ROUTES = [
     id: 'east', name: 'East Corridor', label: 'Al Urubah Rd → Boulevard World',
     anchors: [
       [24.779, 46.649],[24.779, 46.637],[24.778, 46.624],
-      [24.777, 46.613],[24.776, 46.607], CENTER_PT
+      [24.777, 46.613],[24.776, 46.607], eventCenter
     ],
     status: 'slow'
   },
@@ -28,7 +63,7 @@ const DEMO_ROUTES = [
     id: 'south', name: 'South Corridor', label: 'Olaya St → Boulevard World',
     anchors: [
       [24.744, 46.601],[24.752, 46.601],[24.760, 46.601],
-      [24.768, 46.601],[24.773, 46.601], CENTER_PT
+      [24.768, 46.601],[24.773, 46.601], eventCenter
     ],
     status: 'moderate'
   }
@@ -89,6 +124,134 @@ let selectedAltRouteId = null;
 
 const ALT_COLOR = '#38bdf8';
 const ALT_ROUTE_PENALTY = 12;
+
+// ── Event Center ────────────────────────────────────────────────
+function offsetLatLng(center, bearingDeg, distanceM) {
+  const R = 6371000;
+  const bearing = bearingDeg * Math.PI / 180;
+  const lat1 = center[0] * Math.PI / 180;
+  const lng1 = center[1] * Math.PI / 180;
+  const d = distanceM / R;
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(d) +
+    Math.cos(lat1) * Math.sin(d) * Math.cos(bearing)
+  );
+  const lng2 = lng1 + Math.atan2(
+    Math.sin(bearing) * Math.sin(d) * Math.cos(lat1),
+    Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+  );
+  return [lat2 * 180 / Math.PI, lng2 * 180 / Math.PI];
+}
+
+function nearestRoadDistance(latlng) {
+  if (!nodeIndex || nodeIndex.length === 0) buildGraph();
+  const k = nearestNode(latlng[0], latlng[1]);
+  if (!k || !graph[k]) return Infinity;
+  return haversine({ lat:latlng[0], lng:latlng[1] }, graph[k]);
+}
+
+function buildCorridorAnchors(center, bearing) {
+  return [5200, 3900, 2600, 1350, 450, 0].map(dist => offsetLatLng(center, bearing, dist));
+}
+
+function clearRouteCaches() {
+  DEMO_ROUTES.forEach(route => {
+    route.roadPath = null;
+    route.featureIds = new Set();
+    route.alternate = null;
+    route.distanceM = 0;
+    route.baseTimeSec = 0;
+    route.trafficTimeSec = 0;
+  });
+  selectedAltRouteId = null;
+}
+
+function rebuildScenarioAroundCenter() {
+  eventCenterRoadDistanceM = nearestRoadDistance(eventCenter);
+  DEMO_ROUTE_TEMPLATES.forEach((tpl, i) => {
+    const route = DEMO_ROUTES[i];
+    route.id = tpl.id;
+    route.name = tpl.name;
+    route.label = tpl.label;
+    route.status = route.status || tpl.status;
+    route.anchors = buildCorridorAnchors(eventCenter, tpl.bearing);
+  });
+
+  INCIDENT_TEMPLATES.forEach((tpl, i) => {
+    const inc = INCIDENTS[i];
+    const [lat, lng] = offsetLatLng(eventCenter, tpl.bearing, tpl.dist);
+    Object.assign(inc, tpl, { lat, lng });
+  });
+
+  CHECKPOINT_TEMPLATES.forEach((tpl, i) => {
+    const cp = CHECKPOINTS[i];
+    const [lat, lng] = offsetLatLng(eventCenter, tpl.bearing, tpl.dist);
+    Object.assign(cp, tpl, { lat, lng });
+  });
+
+  clearRouteCaches();
+}
+
+function setEventCenter(latlng, opts = {}) {
+  ensureDemoGraph();
+  const dist = nearestRoadDistance(latlng);
+  if (dist > 2500) {
+    if (!opts.quiet && typeof showToast === 'function') showToast('Select a point closer to the mapped road network');
+    return false;
+  }
+
+  eventCenter = [latlng[0], latlng[1]];
+  eventCenterRoadDistanceM = dist;
+  rebuildScenarioAroundCenter();
+  if (demoActive) {
+    drawDemoLayers();
+    map.flyTo(eventCenter, opts.zoom || 14, { duration:0.8 });
+  }
+  if (!opts.quiet && typeof showToast === 'function') showToast('Event center updated');
+  return true;
+}
+
+function resetEventCenter() {
+  setEventCenter([...DEFAULT_CENTER_PT], { zoom:14 });
+}
+
+function handleDemoMapClick(e) {
+  if (!demoActive || routeMode) return;
+  setEventCenter([e.latlng.lat, e.latlng.lng]);
+}
+
+function roadAccessScore() {
+  const radiusM = 1800;
+  let nearby = 0;
+  ROADS_GEOJSON.features.forEach(feat => {
+    if (feat.properties.blocked) return;
+    const coords = feat.geometry.coordinates;
+    for (let i = 0; i < coords.length; i += Math.max(1, Math.floor(coords.length / 3))) {
+      const [lng, lat] = coords[i];
+      if (haversine({ lat:eventCenter[0], lng:eventCenter[1] }, { lat, lng }) <= radiusM) {
+        nearby++;
+        break;
+      }
+    }
+  });
+  return Math.max(0.78, Math.min(1.18, nearby / 230));
+}
+
+function deterministicDemandFactor() {
+  const seed = Math.abs(Math.sin(eventCenter[0] * 12.9898 + eventCenter[1] * 78.233));
+  return 0.9 + seed * 0.22;
+}
+
+function eventDemandMetrics() {
+  const access = roadAccessScore();
+  const expectedVisitors = Math.round(HISTORICAL_EVENT_BASELINE.avgVisitors * deterministicDemandFactor() * access / 100) * 100;
+  const expectedVehicles = Math.round(
+    expectedVisitors * HISTORICAL_EVENT_BASELINE.vehicleShare / HISTORICAL_EVENT_BASELINE.avgVehicleOccupancy
+  );
+  const peakArrivals = Math.round(expectedVehicles * HISTORICAL_EVENT_BASELINE.peakArrivalShare);
+  const checkpointStaff = Math.max(6, CHECKPOINTS.length + Math.ceil(expectedVehicles / HISTORICAL_EVENT_BASELINE.checkpointCapacity));
+  return { access, expectedVisitors, expectedVehicles, peakArrivals, checkpointStaff };
+}
 
 // ── Route Geometry ───────────────────────────────────────────────
 function ensureDemoGraph() {
@@ -210,6 +373,24 @@ function calculateRouteGeometry(route) {
     result.featureIds.forEach(id => featureIds.add(id));
     totalDist += result.totalDist || 0;
     totalBaseTime += result.totalBaseTime || result.totalTime || 0;
+  }
+
+  if (!routed) {
+    featureIds.clear();
+    totalDist = 0;
+    totalBaseTime = 0;
+
+    const start = nearestNode(anchors[0][0], anchors[0][1]);
+    const end = nearestNode(anchors[anchors.length - 1][0], anchors[anchors.length - 1][1]);
+    const direct = start && end ? (dijkstra(start, end) || demoDijkstra(start, end)) : null;
+    if (direct && direct.path && direct.path.length > 1) {
+      latlngs.length = 0;
+      latlngs.push(...direct.path.map(n => [n.lat, n.lng]));
+      direct.featureIds.forEach(id => featureIds.add(id));
+      totalDist = direct.totalDist || 0;
+      totalBaseTime = direct.totalBaseTime || direct.totalTime || 0;
+      routed = true;
+    }
   }
 
   route.roadPath = routed && latlngs.length ? latlngs : anchors;
@@ -362,10 +543,31 @@ function cpIcon(active) {
       display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer">👮</div>` });
 }
 
+function eventCenterIcon() {
+  return L.divIcon({ className:'', iconAnchor:[18,18], html:`
+    <div style="width:36px;height:36px;border-radius:50%;background:#0f172a;
+      border:3px solid #38bdf8;box-shadow:0 0 18px rgba(56,189,248,0.8);
+      display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer">◎</div>` });
+}
+
 // ── Draw / Clear ────────────────────────────────────────────────
 function drawDemoLayers() {
   clearDemoLayers();
   const heatPts = [];
+
+  const centerHalo = L.circle(eventCenter, {
+    radius: 900,
+    color: '#38bdf8',
+    weight: 1,
+    opacity: 0.55,
+    fillColor: '#38bdf8',
+    fillOpacity: 0.07
+  }).addTo(map);
+  const centerMarker = L.marker(eventCenter, { icon:eventCenterIcon(), zIndexOffset:900 })
+    .addTo(map)
+    .on('click', e => L.DomEvent.stopPropagation(e))
+    .bindTooltip(`<b>Event Center</b><br>${eventCenter[0].toFixed(5)}, ${eventCenter[1].toFixed(5)}<br><small>Click another map point to move it</small>`);
+  demoLayers.push(centerHalo, centerMarker);
 
   DEMO_ROUTES.forEach(route => {
     const c = SC[route.status];
@@ -400,6 +602,7 @@ function drawDemoLayers() {
   INCIDENTS.forEach(inc => {
     const m = L.marker([inc.lat, inc.lng], { icon: incidentIcon(inc.severity), zIndexOffset:500 })
       .addTo(map)
+      .on('click', e => L.DomEvent.stopPropagation(e))
       .bindTooltip(`<b>⚠ ${inc.desc}</b><br><span style="color:${SC[inc.severity]}">${inc.severity.toUpperCase()}</span>`, { sticky:true });
     heatPts.push([inc.lat, inc.lng, inc.severity==='jam'?1.0:inc.severity==='slow'?0.65:0.45]);
     demoLayers.push(m);
@@ -408,7 +611,7 @@ function drawDemoLayers() {
   CHECKPOINTS.forEach(cp => {
     const m = L.marker([cp.lat, cp.lng], { icon: cpIcon(chatCp && chatCp.id===cp.id), zIndexOffset:700 })
       .addTo(map)
-      .on('click', () => openChat(cp))
+      .on('click', e => { L.DomEvent.stopPropagation(e); openChat(cp); })
       .bindTooltip(`👮 <b>${cp.name}</b><br><small>Click to open comms</small>`);
     m._cpId = cp.id;
     demoLayers.push(m);
@@ -437,9 +640,30 @@ function refreshSmartPanel() {
   const delayEl = document.getElementById('demo-delay-chart');
   const statusEl = document.getElementById('demo-status-chart');
   const altEl = document.getElementById('demo-alt-list');
-  if (!kpiEl || !delayEl || !statusEl || !altEl) return;
+  const centerEl = document.getElementById('demo-center-panel');
+  const demandEl = document.getElementById('demo-demand-kpis');
+  if (!kpiEl || !delayEl || !statusEl || !altEl || !centerEl || !demandEl) return;
 
   const summary = routeSummaryStats();
+  const demand = eventDemandMetrics();
+  centerEl.innerHTML = `
+    <div class="event-center-readout">
+      <div>
+        <strong>${eventCenter[0].toFixed(5)}, ${eventCenter[1].toFixed(5)}</strong>
+        <span>${Math.round(eventCenterRoadDistanceM)} m from nearest road node</span>
+      </div>
+      <button onclick="resetEventCenter()">Reset</button>
+    </div>
+  `;
+  demandEl.innerHTML = `
+    <div class="kpi-grid demand-grid">
+      <div class="kpi-tile"><span>Expected visitors</span><strong>${demand.expectedVisitors.toLocaleString()}</strong></div>
+      <div class="kpi-tile"><span>Expected vehicles</span><strong>${demand.expectedVehicles.toLocaleString()}</strong></div>
+      <div class="kpi-tile"><span>Peak arrivals/hr</span><strong>${demand.peakArrivals.toLocaleString()}</strong></div>
+      <div class="kpi-tile"><span>Control staff</span><strong>${demand.checkpointStaff}</strong></div>
+    </div>
+    <div class="smart-note">Forecast uses historical average visitors, access-road density, vehicle share, and peak arrival rate.</div>
+  `;
   kpiEl.innerHTML = `
     <div class="kpi-grid">
       <div class="kpi-tile"><span>Corridors</span><strong>${summary.active}</strong></div>
@@ -511,7 +735,9 @@ function updateHeatVis() {
   }
 }
 function initDemo() {
+  rebuildScenarioAroundCenter();
   map.on('zoomend', updateHeatVis);
+  map.on('click', handleDemoMapClick);
 }
 
 // ── Simulate ────────────────────────────────────────────────────
@@ -525,6 +751,7 @@ function simulateTraffic() {
 }
 
 function resetDemo() {
+  rebuildScenarioAroundCenter();
   DEMO_ROUTES[0].status='jam'; DEMO_ROUTES[1].status='slow'; DEMO_ROUTES[2].status='moderate';
   INCIDENTS[0].severity='jam'; INCIDENTS[1].severity='slow'; INCIDENTS[2].severity='moderate';
   INCIDENTS[3].severity='slow'; INCIDENTS[4].severity='moderate'; INCIDENTS[5].severity='jam'; INCIDENTS[6].severity='slow';
@@ -543,7 +770,8 @@ function toggleDemoMode(enable) {
     document.getElementById('panel-demo').style.display    = 'flex';
     if (routeMode) toggleRouteMode(false);
     drawDemoLayers();
-    map.flyTo(CENTER_PT, 14, { duration:1.2 });
+    map.flyTo(eventCenter, 14, { duration:1.2 });
+    showToast('Click map to set event center');
   } else {
     clearDemoLayers();
     closeChatPanel();
