@@ -1,6 +1,6 @@
 # Boulevard World — Smart Traffic Operations POC
 
-zephyrsai.github.io/event_management
+https://zephyrsai.github.io/event_management
 
 An interactive, offline-capable traffic operations platform for **Boulevard World, Riyadh, Saudi Arabia** (`24.776217, 46.602357`). It lets operators inspect real OpenStreetMap road geometry, mark live traffic conditions, apply road restrictions, calculate traffic-aware routes, and run a smart demo with a user-defined event center, simulated incidents, demand forecasting, KPI charts, alternate-route generation, and Google Maps export.
 
