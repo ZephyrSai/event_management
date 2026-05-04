@@ -1,5 +1,7 @@
 # Boulevard World — Smart Traffic Operations POC
 
+https://zephyrsai.github.io/event_management/
+
 An interactive, offline-capable traffic operations platform for **Boulevard World, Riyadh, Saudi Arabia** (`24.776217, 46.602357`). It lets operators inspect real OpenStreetMap road geometry, mark live traffic conditions, apply road restrictions, calculate traffic-aware routes, and run a smart demo with simulated incidents, KPI charts, alternate-route generation, and Google Maps export.
 
 The current bundled dataset contains **6,824 OSM road segments**, about **28,505 graph nodes**, and about **51,740 directed routing edges**.
