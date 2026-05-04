@@ -204,9 +204,15 @@
   .sim-btn.primary{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff}
   .sim-btn.secondary{background:var(--panel2);color:var(--text2);border:1px solid var(--border)}
   .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .demand-grid .kpi-tile strong{font-size:15px}
   .kpi-tile{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:9px 10px}
   .kpi-tile span{display:block;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.7px;margin-bottom:4px}
   .kpi-tile strong{font-size:17px;color:var(--text);font-weight:700}
+  .event-center-readout{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px}
+  .event-center-readout strong{display:block;font-size:12px;color:#e0f2fe;font-family:monospace;font-weight:700}
+  .event-center-readout span{display:block;font-size:10px;color:var(--text3);margin-top:3px}
+  .event-center-readout button{border:1px solid rgba(56,189,248,0.35);background:rgba(56,189,248,0.12);color:#7dd3fc;border-radius:7px;padding:7px 9px;font-size:10px;font-weight:700;cursor:pointer}
+  .event-center-readout button:hover{background:rgba(56,189,248,0.2)}
   .chart-row{display:grid;grid-template-columns:74px 1fr 42px;align-items:center;gap:8px;margin-bottom:8px}
   .chart-label{font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .chart-track{height:7px;background:#0d1b2e;border:1px solid var(--border);border-radius:8px;overflow:hidden}
@@ -393,6 +399,15 @@
 
     <!-- Demo Panel -->
     <div id="panel-demo">
+      <div class="demo-section">
+        <h3>Event Center</h3>
+        <div id="demo-center-panel"></div>
+        <p style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">Click any mapped location to move the event center and regenerate the simulation around it.</p>
+      </div>
+      <div class="demo-section">
+        <h3>Demand Forecast</h3>
+        <div id="demo-demand-kpis"></div>
+      </div>
       <div class="demo-section">
         <h3>Smart Operations</h3>
         <div id="demo-kpis"></div>
